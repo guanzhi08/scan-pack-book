@@ -91,7 +91,8 @@ $form.Size = New-Object System.Drawing.Size($totalWidth, $totalHeight)
 $form.TopMost = $true
 $form.Cursor = [System.Windows.Forms.Cursors]::Cross
 $form.ShowInTaskbar = $false
-$form.DoubleBuffered = $true
+# Enable double buffering via reflection (DoubleBuffered is a protected property)
+$form.GetType().GetProperty("DoubleBuffered", [System.Reflection.BindingFlags]::Instance -bor [System.Reflection.BindingFlags]::NonPublic).SetValue($form, $true, $null)
 
 # Variables for selection
 $script:isSelecting = $false
@@ -389,7 +390,8 @@ $clickForm.Size = New-Object System.Drawing.Size($clickFormWidth, $clickFormHeig
 $clickForm.TopMost = $true
 $clickForm.Cursor = [System.Windows.Forms.Cursors]::Cross
 $clickForm.ShowInTaskbar = $false
-$clickForm.DoubleBuffered = $true
+# Enable double buffering via reflection (DoubleBuffered is a protected property)
+$clickForm.GetType().GetProperty("DoubleBuffered", [System.Reflection.BindingFlags]::Instance -bor [System.Reflection.BindingFlags]::NonPublic).SetValue($clickForm, $true, $null)
 
 # Picture box for Step 2 background
 $clickPictureBox = New-Object System.Windows.Forms.PictureBox
