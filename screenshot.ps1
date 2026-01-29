@@ -10,8 +10,8 @@ param(
 
     [int]$Count = 5,
 
-    [int]$DelayAfterClickMs = 1000,
-    [int]$IntervalBetweenRunsMs = 1000,
+    [int]$DelayAfterClickMs = 200,
+    [int]$IntervalBetweenRunsMs = 200,
 
     [ValidateSet('Left','Right')]
     [string]$ClickType = 'Left',
@@ -102,6 +102,23 @@ function Save-ScreenRegion {
 
     # Copy from screen to bitmap
     $gfx.CopyFromScreen($X, $Y, 0, 0, $bmp.Size)
+    # Draw a 1-pixel frame around the image
+    $thickness = 1
+    try {
+        $brush = [System.Drawing.Brushes]::Black
+        # Top
+        $gfx.FillRectangle($brush, 0, 0, $Width, $thickness)
+        # Bottom
+        $gfx.FillRectangle($brush, 0, $Height - $thickness, $Width, $thickness)
+        # Left
+        $gfx.FillRectangle($brush, 0, 0, $thickness, $Height)
+        # Right
+        $gfx.FillRectangle($brush, $Width - $thickness, 0, $thickness, $Height)
+    }
+    catch {
+        # If anything goes wrong drawing the frame, continue and save the original capture
+    }
+
     $bmp.Save($Path, [System.Drawing.Imaging.ImageFormat]::Png)
 
     # Clean up
