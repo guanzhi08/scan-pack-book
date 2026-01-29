@@ -1,7 +1,13 @@
 # Visual Screenshot Area Selector + Click Position Picker
-# Step 1: Click and drag to select the screenshot region
+# Step 1: Click and drag to select the screenshot region (or move a fixed-size area)
 # Step 2: Click to select the click position
 # The selected coordinates will be displayed and copied to clipboard
+
+param(
+    [switch]$MoveMode,      # Enable move mode with fixed width/height
+    [int]$Width = 400,      # Width of the screenshot area in move mode
+    [int]$Height = 300      # Height of the screenshot area in move mode
+)
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -100,6 +106,9 @@ $script:startPoint = $null
 $script:endPoint = $null
 $script:selectedRect = $null
 $script:cancelled = $false
+$script:moveMode = $MoveMode
+$script:fixedWidth = $Width
+$script:fixedHeight = $Height
 
 # Picture box for drawing
 $pictureBox = New-Object System.Windows.Forms.PictureBox
@@ -118,7 +127,11 @@ $infoPanel.BringToFront()
 
 # Title
 $titleLabel = New-Object System.Windows.Forms.Label
-$titleLabel.Text = "SCREENSHOT AREA SELECTOR"
+if ($script:moveMode) {
+    $titleLabel.Text = "MOVE SCREENSHOT AREA"
+} else {
+    $titleLabel.Text = "SCREENSHOT AREA SELECTOR"
+}
 $titleLabel.Font = New-Object System.Drawing.Font("Segoe UI", 13, [System.Drawing.FontStyle]::Bold)
 $titleLabel.ForeColor = [System.Drawing.Color]::FromArgb(255, 100, 200, 255)
 $titleLabel.Location = New-Object System.Drawing.Point(15, 10)
@@ -127,7 +140,11 @@ $infoPanel.Controls.Add($titleLabel)
 
 # Size label
 $sizeLabel = New-Object System.Windows.Forms.Label
-$sizeLabel.Text = "Click and drag to select area"
+if ($script:moveMode) {
+    $sizeLabel.Text = "Size: $($script:fixedWidth) x $($script:fixedHeight) (fixed)"
+} else {
+    $sizeLabel.Text = "Click and drag to select area"
+}
 $sizeLabel.Font = New-Object System.Drawing.Font("Consolas", 10, [System.Drawing.FontStyle]::Bold)
 $sizeLabel.ForeColor = [System.Drawing.Color]::White
 $sizeLabel.Location = New-Object System.Drawing.Point(15, 45)
@@ -145,7 +162,11 @@ $infoPanel.Controls.Add($posLabel)
 
 # Instructions
 $instructLabel = New-Object System.Windows.Forms.Label
-$instructLabel.Text = "Drag: Select area | ESC: Cancel | Enter: Confirm"
+if ($script:moveMode) {
+    $instructLabel.Text = "Move: Position area | Click: Confirm | ESC: Cancel"
+} else {
+    $instructLabel.Text = "Drag: Select area | ESC: Cancel | Enter: Confirm"
+}
 $instructLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9)
 $instructLabel.ForeColor = [System.Drawing.Color]::FromArgb(255, 150, 150, 150)
 $instructLabel.Location = New-Object System.Drawing.Point(15, 120)
@@ -226,13 +247,109 @@ function Update-Selection {
     return @{ X = $rectX; Y = $rectY; Width = $rectW; Height = $rectH }
 }
 
-# Mouse down - start selection
+# Function to draw fixed-size area centered on cursor (Move Mode)
+function Update-MoveSelection {
+    param($centerX, $centerY)
+    
+    # Calculate rectangle centered on cursor
+    $rectW = $script:fixedWidth
+    $rectH = $script:fixedHeight
+    $rectX = $centerX - [Math]::Floor($rectW / 2)
+    $rectY = $centerY - [Math]::Floor($rectH / 2)
+    
+    # Clamp to screen bounds
+    if ($rectX -lt 0) { $rectX = 0 }
+    if ($rectY -lt 0) { $rectY = 0 }
+    if ($rectX + $rectW -gt $totalWidth) { $rectX = $totalWidth - $rectW }
+    if ($rectY + $rectH -gt $totalHeight) { $rectY = $totalHeight - $rectH }
+    
+    # Create new composite image
+    $compositeBitmap = New-Object System.Drawing.Bitmap($totalWidth, $totalHeight)
+    $g = [System.Drawing.Graphics]::FromImage($compositeBitmap)
+    
+    # Draw dimmed background
+    $g.DrawImage($dimmedBitmap, 0, 0)
+    
+    # Draw clear selected area (show original screenshot)
+    $srcRect = New-Object System.Drawing.Rectangle($rectX, $rectY, $rectW, $rectH)
+    $destRect = New-Object System.Drawing.Rectangle($rectX, $rectY, $rectW, $rectH)
+    $g.DrawImage($screenBitmap, $destRect, $srcRect, [System.Drawing.GraphicsUnit]::Pixel)
+    
+    # Draw selection border
+    $borderPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255, 0, 174, 255), 2)
+    $g.DrawRectangle($borderPen, $rectX, $rectY, $rectW, $rectH)
+    $borderPen.Dispose()
+    
+    # Draw corner handles
+    $handleSize = 8
+    $handleBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 0, 174, 255))
+    # Top-left
+    $g.FillRectangle($handleBrush, $rectX - $handleSize/2, $rectY - $handleSize/2, $handleSize, $handleSize)
+    # Top-right
+    $g.FillRectangle($handleBrush, $rectX + $rectW - $handleSize/2, $rectY - $handleSize/2, $handleSize, $handleSize)
+    # Bottom-left
+    $g.FillRectangle($handleBrush, $rectX - $handleSize/2, $rectY + $rectH - $handleSize/2, $handleSize, $handleSize)
+    # Bottom-right
+    $g.FillRectangle($handleBrush, $rectX + $rectW - $handleSize/2, $rectY + $rectH - $handleSize/2, $handleSize, $handleSize)
+    $handleBrush.Dispose()
+    
+    # Draw center crosshair
+    $centerPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(200, 255, 255, 255), 1)
+    $centerPen.DashStyle = [System.Drawing.Drawing2D.DashStyle]::Dash
+    $cx = $rectX + $rectW / 2
+    $cy = $rectY + $rectH / 2
+    $g.DrawLine($centerPen, $cx - 20, $cy, $cx + 20, $cy)
+    $g.DrawLine($centerPen, $cx, $cy - 20, $cx, $cy + 20)
+    $centerPen.Dispose()
+    
+    # Draw size indicator on selection
+    $sizeText = "${rectW} x ${rectH}"
+    $sizeFont = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $textSize = $g.MeasureString($sizeText, $sizeFont)
+    $textX = $rectX + ($rectW - $textSize.Width) / 2
+    $textY = $rectY + $rectH + 5
+    if ($textY + $textSize.Height -gt $totalHeight) {
+        $textY = $rectY - $textSize.Height - 5
+    }
+    
+    # Text background
+    $textBgBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(200, 0, 0, 0))
+    $g.FillRectangle($textBgBrush, $textX - 5, $textY - 2, $textSize.Width + 10, $textSize.Height + 4)
+    $textBgBrush.Dispose()
+    
+    # Text
+    $textBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
+    $g.DrawString($sizeText, $sizeFont, $textBrush, $textX, $textY)
+    $textBrush.Dispose()
+    $sizeFont.Dispose()
+    
+    $g.Dispose()
+    
+    # Update picture box
+    $oldImage = $pictureBox.Image
+    $pictureBox.Image = $compositeBitmap
+    if ($oldImage -ne $dimmedBitmap -and $oldImage -ne $screenBitmap) {
+        $oldImage.Dispose()
+    }
+    
+    return @{ X = $rectX; Y = $rectY; Width = $rectW; Height = $rectH }
+}
+
+# Mouse down - start selection (only in drag mode)
 $pictureBox.Add_MouseDown({
     param($sender, $e)
     if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
-        $script:isSelecting = $true
-        $script:startPoint = $e.Location
-        $script:endPoint = $e.Location
+        if ($script:moveMode) {
+            # In move mode, clicking confirms the selection
+            $rect = Update-MoveSelection -centerX $e.X -centerY $e.Y
+            $script:selectedRect = @{ X = ($rect.X + $minX); Y = ($rect.Y + $minY); Width = $rect.Width; Height = $rect.Height }
+            $form.Close()
+        } else {
+            # In drag mode, start selecting
+            $script:isSelecting = $true
+            $script:startPoint = $e.Location
+            $script:endPoint = $e.Location
+        }
     }
 })
 
@@ -243,7 +360,11 @@ $pictureBox.Add_MouseMove({
     $screenX = $e.X + $minX
     $screenY = $e.Y + $minY
     
-    if ($script:isSelecting) {
+    if ($script:moveMode) {
+        # In move mode, always update the rectangle position
+        $rect = Update-MoveSelection -centerX $e.X -centerY $e.Y
+        $posLabel.Text = "X: $($rect.X + $minX), Y: $($rect.Y + $minY)"
+    } elseif ($script:isSelecting) {
         $script:endPoint = $e.Location
         $rect = Update-Selection -startX $script:startPoint.X -startY $script:startPoint.Y -endX $e.X -endY $e.Y
         
@@ -261,9 +382,13 @@ $pictureBox.Add_MouseMove({
     }
 })
 
-# Mouse up - finish selection
+# Mouse up - finish selection (only in drag mode)
 $pictureBox.Add_MouseUp({
     param($sender, $e)
+    if ($script:moveMode) {
+        # Move mode uses click, not drag - do nothing on mouse up
+        return
+    }
     if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left -and $script:isSelecting) {
         $script:isSelecting = $false
         $script:endPoint = $e.Location
@@ -312,10 +437,21 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  STEP 1: SELECT SCREENSHOT AREA" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "Instructions:" -ForegroundColor Yellow
-Write-Host "  1. Click and drag to select the area" -ForegroundColor White
-Write-Host "  2. Press ENTER to confirm selection" -ForegroundColor White
-Write-Host "  3. Press ESC to cancel" -ForegroundColor White
+if ($script:moveMode) {
+    Write-Host "Mode: MOVE (fixed size $($script:fixedWidth) x $($script:fixedHeight))" -ForegroundColor Magenta
+    Write-Host ""
+    Write-Host "Instructions:" -ForegroundColor Yellow
+    Write-Host "  1. Move mouse to position the area" -ForegroundColor White
+    Write-Host "  2. Click to confirm the position" -ForegroundColor White
+    Write-Host "  3. Press ESC to cancel" -ForegroundColor White
+} else {
+    Write-Host "Mode: DRAG (select by dragging)" -ForegroundColor Magenta
+    Write-Host ""
+    Write-Host "Instructions:" -ForegroundColor Yellow
+    Write-Host "  1. Click and drag to select the area" -ForegroundColor White
+    Write-Host "  2. Press ENTER to confirm selection" -ForegroundColor White
+    Write-Host "  3. Press ESC to cancel" -ForegroundColor White
+}
 Write-Host ""
 
 $form.ShowDialog() | Out-Null
