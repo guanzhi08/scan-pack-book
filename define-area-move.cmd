@@ -1,0 +1,1 @@
+powershell.exe -ExecutionPolicy Bypass -File %~dp0pick-screenshot-area.ps1 -MoveMode -Width 758 -Height 1024
