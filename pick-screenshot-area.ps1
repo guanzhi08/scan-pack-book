@@ -756,7 +756,12 @@ Write-Host ""
 
 
 # output command to a batch script run.cmd
-$cmdText = "powershell.exe -ExecutionPolicy Bypass -File %~dp0screenshot.ps1 -RectX $($rect.X) -RectY $($rect.Y) -RectWidth $($rect.Width) -RectHeight $($rect.Height) -ClickX $($script:clickX) -ClickY $($script:clickY) -Count $clickCount"
+$cmdText = "@if not ""%minimized%""=="""" goto :start`n"
+$cmdText += "@set minimized=true`n"
+$cmdText += "@start """" /min ""%~f0""`n"
+$cmdText += "@exit`n"
+$cmdText += ":start`n"
+$cmdText += "powershell.exe -ExecutionPolicy Bypass -File %~dp0screenshot.ps1 -RectX $($rect.X) -RectY $($rect.Y) -RectWidth $($rect.Width) -RectHeight $($rect.Height) -ClickX $($script:clickX) -ClickY $($script:clickY) -Count $clickCount"
 $cmdFilePath = Join-Path -Path (Get-Location) -ChildPath "run.cmd"
 Set-Content -Path $cmdFilePath -Value $cmdText -Encoding ASCII
 
